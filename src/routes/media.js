@@ -5,7 +5,7 @@ import fs from 'fs';
 
 const router = express.Router();
 
-// Step 1: Always upload to a temp dir
+// -- Always upload to a temp dir
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dest = path.join('uploads', '_tmp');
@@ -21,13 +21,12 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Step 2: In the route handler, move the file after upload
+// === POST /media/upload ===
 router.post('/upload', upload.single('file'), (req, res) => {
   const userId = req.body.userId;
   const dbName = req.body.dbName;
   if (!userId || !dbName) {
-    // Delete temp file if missing fields
-    if (req.file) fs.unlinkSync(req.file.path);
+    if (req.file && req.file.path) fs.unlinkSync(req.file.path);
     return res.status(400).json({ error: 'Missing userId or dbName' });
   }
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -36,7 +35,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
   fs.mkdirSync(destDir, { recursive: true });
   const destPath = path.join(destDir, req.file.filename);
 
-  // Move the file
+  // Move the file to its real place
   fs.renameSync(req.file.path, destPath);
 
   // Write metadata
@@ -114,7 +113,6 @@ router.delete('/:userId/:dbName/:filename', (req, res) => {
 });
 
 // === GET /media/:userId/:dbName/ ===
-// List all files for this userId/dbName
 router.get('/:userId/:dbName', (req, res) => {
   const dir = path.join('uploads', req.params.userId, req.params.dbName);
   fs.readdir(dir, (err, files) => {
