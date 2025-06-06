@@ -23,8 +23,10 @@ const upload = multer({ storage });
 
 // === POST /media/upload ===
 router.post('/upload', upload.single('file'), (req, res) => {
-  const userId = req.body.userId;
-  const dbName = req.body.dbName;
+  console.log('req.body:', req.body);
+  console.log('req.file:', req.file);
+  const userId = req.body.userId || req.body.user_id || req.query.userId || req.query.user_id;
+  const dbName = req.body.dbName || req.body.db_name || "default";
   if (!userId || !dbName) {
     if (req.file && req.file.path) fs.unlinkSync(req.file.path);
     return res.status(400).json({ error: 'Missing userId or dbName' });
