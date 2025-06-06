@@ -5,14 +5,10 @@ import fs from 'fs';
 
 const router = express.Router();
 
-// -- Multer config --
+// Step 1: Always upload to a temp dir
 const storage = multer.diskStorage({
-  // Accepts userId and dbName from form field or query param
   destination: (req, file, cb) => {
-    const userId = req.body.userId || req.query.userId;
-    const dbName = req.body.dbName || req.query.dbName;
-    if (!userId || !dbName) return cb(new Error('Missing userId or dbName'), null);
-    const dest = path.join('uploads', userId, dbName);
+    const dest = path.join('uploads', '_tmp');
     fs.mkdirSync(dest, { recursive: true });
     cb(null, dest);
   },
@@ -25,13 +21,25 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// === POST /media/upload ===
+// Step 2: In the route handler, move the file after upload
 router.post('/upload', upload.single('file'), (req, res) => {
-  const userId = req.body.userId || req.query.userId;
-  const dbName = req.body.dbName || req.query.dbName;
-  if (!userId || !dbName) return res.status(400).json({ error: 'Missing userId or dbName' });
+  const userId = req.body.userId;
+  const dbName = req.body.dbName;
+  if (!userId || !dbName) {
+    // Delete temp file if missing fields
+    if (req.file) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Missing userId or dbName' });
+  }
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
+  const destDir = path.join('uploads', userId, dbName);
+  fs.mkdirSync(destDir, { recursive: true });
+  const destPath = path.join(destDir, req.file.filename);
+
+  // Move the file
+  fs.renameSync(req.file.path, destPath);
+
+  // Write metadata
   const metadata = {
     filename: req.file.filename,
     originalname: req.file.originalname,
@@ -44,7 +52,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
   };
   try {
     fs.writeFileSync(
-      path.join('uploads', userId, dbName, `${req.file.filename}.meta.json`),
+      path.join(destDir, `${req.file.filename}.meta.json`),
       JSON.stringify(metadata, null, 2)
     );
   } catch (err) {
