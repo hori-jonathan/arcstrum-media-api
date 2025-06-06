@@ -15,7 +15,7 @@ if (!fs.existsSync(uploadsPath)) {
 
 app.use('/media', mediaRouter);
 
-const PORT = 4000;
+const PORT = 5000;
 app.listen(PORT, () => {
   console.log(`Media API running at http://localhost:${PORT}/media`);
 });
