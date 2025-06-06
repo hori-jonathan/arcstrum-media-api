@@ -118,7 +118,10 @@ router.delete('/:userId/:dbName/:filename', (req, res) => {
 router.get('/:userId/:dbName', (req, res) => {
   const dir = path.join('uploads', req.params.userId, req.params.dbName);
   fs.readdir(dir, (err, files) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      if (err.code === 'ENOENT') return res.json([]);
+      return res.status(500).json({ error: err.message });
+    }
     const data = files.filter(f => !f.endsWith('.meta.json'));
     res.json(data);
   });
