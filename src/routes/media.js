@@ -23,14 +23,27 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+/** 
+ * === GET METADATA === 
+ * /media/meta/:userId/:cluster/:id 
+ * This must be FIRST! 
+ */
+router.get('/meta/:userId/:cluster/:id', (req, res) => {
+  const metaPath = path.join('uploads', req.params.userId, req.params.cluster, `${req.params.id}.meta.json`);
+  fs.readFile(metaPath, (err, data) => {
+    if (!err) return res.type('json').send(data);
+    // fallback: minimal metadata
+    return res.status(404).json({ error: 'Metadata not found' });
+  });
+});
+
 /**
- * === CLUSTER LIST: must come FIRST! ===
+ * === CLUSTER LIST: must come after meta! ===
  * GET /media/:userId
  * Returns ["photos", "videos", ...]
  */
 router.get('/:userId', (req, res, next) => {
   // If this looks like a file/cluster route, skip (Express will match the more specific route if provided)
-  // If a deeper param is present, don't handle this route
   if (req.params.userId.includes('.')) return next();
   const userDir = path.join('uploads', req.params.userId);
   fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
@@ -88,7 +101,8 @@ router.post('/upload', upload.single('file'), (req, res) => {
 });
 
 // ---- LIST FILES IN CLUSTER ----
-router.get('/:userId/:cluster', (req, res) => {
+router.get('/:userId/:cluster', (req, res, next) => {
+  if (req.params.cluster.includes('.')) return next(); // In case someone requests a filename, pass
   const dir = path.join('uploads', req.params.userId, req.params.cluster);
   fs.readdir(dir, (err, files) => {
     if (err) {
@@ -101,7 +115,9 @@ router.get('/:userId/:cluster', (req, res) => {
 });
 
 // ---- GET FILE ----
-router.get('/:userId/:cluster/:filename', (req, res) => {
+router.get('/:userId/:cluster/:filename', (req, res, next) => {
+  // Prevent matching /download as a filename
+  if (req.params.filename === 'download') return next();
   const filePath = path.join('uploads', req.params.userId, req.params.cluster, req.params.filename);
   fs.access(filePath, fs.constants.F_OK, (err) => {
     if (err) return res.status(404).json({ error: 'File not found' });
@@ -115,16 +131,6 @@ router.get('/:userId/:cluster/:filename/download', (req, res) => {
   fs.access(filePath, fs.constants.F_OK, (err) => {
     if (err) return res.status(404).json({ error: 'File not found' });
     res.download(path.resolve(filePath));
-  });
-});
-
-// ---- GET METADATA ----
-router.get('/meta/:userId/:cluster/:id', (req, res) => {
-  const metaPath = path.join('uploads', req.params.userId, req.params.cluster, `${req.params.id}.meta.json`);
-  fs.readFile(metaPath, (err, data) => {
-    if (!err) return res.type('json').send(data);
-    // fallback: minimal metadata
-    return res.status(404).json({ error: 'Metadata not found' });
   });
 });
 
