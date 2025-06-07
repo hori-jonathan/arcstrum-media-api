@@ -6,6 +6,9 @@ import { v4 as uuidv4 } from 'uuid'; // npm i uuid
 
 const router = express.Router();
 
+router.get('/ping', (req, res) => res.send('pong'));
+
+/*
 // ---- STORAGE ----
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -23,11 +26,6 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-/** 
- * === GET METADATA === 
- * /media/meta/:userId/:cluster/:id 
- * This must be FIRST! 
- */
 router.get('/meta/:userId/:cluster/:id', (req, res) => {
   const metaPath = path.join('uploads', req.params.userId, req.params.cluster, `${req.params.id}.meta.json`);
   fs.readFile(metaPath, (err, data) => {
@@ -37,11 +35,6 @@ router.get('/meta/:userId/:cluster/:id', (req, res) => {
   });
 });
 
-/**
- * === CLUSTER LIST: must come after meta! ===
- * GET /media/:userId
- * Returns ["photos", "videos", ...]
- */
 router.get('/:userId', (req, res, next) => {
   // If this looks like a file/cluster route, skip (Express will match the more specific route if provided)
   if (req.params.userId.includes('.')) return next();
@@ -144,6 +137,6 @@ router.delete('/:userId/:cluster/:filename', (req, res) => {
     fs.unlink(metaPath, () => {});
     res.json({ status: 'deleted', filename: req.params.filename, userId: req.params.userId, cluster: req.params.cluster });
   });
-});
+});*/
 
 export default router;

@@ -19,7 +19,12 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // handle preflight requests
+
+// THIS replaces any app.options('*', ...) usage:
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') res.sendStatus(204);
+  else next();
+});
 
 // Ensure uploads folder exists
 const uploadsPath = path.resolve('uploads');
