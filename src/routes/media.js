@@ -56,6 +56,22 @@ router.post('/upload', upload.single('file'), (req, res) => {
   res.json(metadata);
 });
 
+router.get('/:userId', (req, res) => {
+  const userDir = path.join('uploads', req.params.userId);
+  fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
+    if (err) {
+      // If folder doesn't exist, just return []
+      if (err.code === "ENOENT") return res.json([]);
+      return res.status(500).json({ error: err.message });
+    }
+    // Only return folder names (clusters)
+    const clusters = entries
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name);
+    res.json(clusters);
+  });
+});
+
 // ---- GET FILE ----
 router.get('/:userId/:cluster/:filename', (req, res) => {
   const filePath = path.join('uploads', req.params.userId, req.params.cluster, req.params.filename);
@@ -116,22 +132,6 @@ router.post('/:userId/:cluster', (req, res) => {
   fs.mkdir(dir, { recursive: true }, err => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ status: 'created', cluster: req.params.cluster });
-  });
-});
-
-router.get('/:userId', (req, res) => {
-  const userDir = path.join('uploads', req.params.userId);
-  fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
-    if (err) {
-      // If folder doesn't exist, just return []
-      if (err.code === "ENOENT") return res.json([]);
-      return res.status(500).json({ error: err.message });
-    }
-    // Only return folder names (clusters)
-    const clusters = entries
-      .filter(entry => entry.isDirectory())
-      .map(entry => entry.name);
-    res.json(clusters);
   });
 });
 
