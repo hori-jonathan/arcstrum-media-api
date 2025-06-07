@@ -23,7 +23,38 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ---- CREATE/UPLOAD ----
+/**
+ * === CLUSTER LIST: must come FIRST! ===
+ * GET /media/:userId
+ * Returns ["photos", "videos", ...]
+ */
+router.get('/:userId', (req, res, next) => {
+  // If this looks like a file/cluster route, skip (Express will match the more specific route if provided)
+  // If a deeper param is present, don't handle this route
+  if (req.params.userId.includes('.')) return next();
+  const userDir = path.join('uploads', req.params.userId);
+  fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
+    if (err) {
+      if (err.code === "ENOENT") return res.json([]);
+      return res.status(500).json({ error: err.message });
+    }
+    const clusters = entries
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name);
+    res.json(clusters);
+  });
+});
+
+// ---- CREATE CLUSTER ----
+router.post('/:userId/:cluster', (req, res) => {
+  const dir = path.join('uploads', req.params.userId, req.params.cluster);
+  fs.mkdir(dir, { recursive: true }, err => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ status: 'created', cluster: req.params.cluster });
+  });
+});
+
+// ---- UPLOAD FILE ----
 router.post('/upload', upload.single('file'), (req, res) => {
   const userId = req.body.userId;
   const cluster = req.body.cluster;
@@ -56,19 +87,16 @@ router.post('/upload', upload.single('file'), (req, res) => {
   res.json(metadata);
 });
 
-router.get('/:userId', (req, res) => {
-  const userDir = path.join('uploads', req.params.userId);
-  fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
+// ---- LIST FILES IN CLUSTER ----
+router.get('/:userId/:cluster', (req, res) => {
+  const dir = path.join('uploads', req.params.userId, req.params.cluster);
+  fs.readdir(dir, (err, files) => {
     if (err) {
-      // If folder doesn't exist, just return []
-      if (err.code === "ENOENT") return res.json([]);
+      if (err.code === 'ENOENT') return res.json([]);
       return res.status(500).json({ error: err.message });
     }
-    // Only return folder names (clusters)
-    const clusters = entries
-      .filter(entry => entry.isDirectory())
-      .map(entry => entry.name);
-    res.json(clusters);
+    const data = files.filter(f => !f.endsWith('.meta.json'));
+    res.json(data);
   });
 });
 
@@ -95,7 +123,6 @@ router.get('/meta/:userId/:cluster/:id', (req, res) => {
   const metaPath = path.join('uploads', req.params.userId, req.params.cluster, `${req.params.id}.meta.json`);
   fs.readFile(metaPath, (err, data) => {
     if (!err) return res.type('json').send(data);
-
     // fallback: minimal metadata
     return res.status(404).json({ error: 'Metadata not found' });
   });
@@ -110,28 +137,6 @@ router.delete('/:userId/:cluster/:filename', (req, res) => {
     if (err) return res.status(404).json({ error: 'File not found' });
     fs.unlink(metaPath, () => {});
     res.json({ status: 'deleted', filename: req.params.filename, userId: req.params.userId, cluster: req.params.cluster });
-  });
-});
-
-// ---- LIST FILES IN CLUSTER ----
-router.get('/:userId/:cluster', (req, res) => {
-  const dir = path.join('uploads', req.params.userId, req.params.cluster);
-  fs.readdir(dir, (err, files) => {
-    if (err) {
-      if (err.code === 'ENOENT') return res.json([]);
-      return res.status(500).json({ error: err.message });
-    }
-    const data = files.filter(f => !f.endsWith('.meta.json'));
-    res.json(data);
-  });
-});
-
-// ---- OPTIONAL: CREATE CLUSTER (just creates folder) ----
-router.post('/:userId/:cluster', (req, res) => {
-  const dir = path.join('uploads', req.params.userId, req.params.cluster);
-  fs.mkdir(dir, { recursive: true }, err => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ status: 'created', cluster: req.params.cluster });
   });
 });
 
