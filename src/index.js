@@ -21,9 +21,6 @@ app.use(cors(corsOptions)); // MUST be before everything
 app.use(express.json());
 app.use('/media', mediaRouter);
 
-// Universal OPTIONS handler for ALL routes (keeps CORS happy)
-app.options('*', cors(corsOptions));
-
 // Error handler that sets CORS headers, too:
 app.use((err, req, res, next) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
