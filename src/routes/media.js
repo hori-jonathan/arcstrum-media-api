@@ -119,4 +119,20 @@ router.post('/:userId/:cluster', (req, res) => {
   });
 });
 
+router.get('/:userId', (req, res) => {
+  const userDir = path.join('uploads', req.params.userId);
+  fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
+    if (err) {
+      // If folder doesn't exist, just return []
+      if (err.code === "ENOENT") return res.json([]);
+      return res.status(500).json({ error: err.message });
+    }
+    // Only return folder names (clusters)
+    const clusters = entries
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name);
+    res.json(clusters);
+  });
+});
+
 export default router;
