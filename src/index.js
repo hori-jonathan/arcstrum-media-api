@@ -5,19 +5,21 @@ import fs from 'fs';
 import mediaRouter from './routes/media.js';
 
 const app = express();
-const allowedOrigins = ['https://console.arcstrum.com', 'http://localhost:3000'];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // allow non-browser or same-origin requests
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+const allowedOrigins = ['https://console.arcstrum.com', 'http://localhost:3000'];
+const corsOptions = {
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true); // allow non-browser, Postman, same-origin
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-}));
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // handle preflight requests
 
 // Ensure uploads folder exists
 const uploadsPath = path.resolve('uploads');
