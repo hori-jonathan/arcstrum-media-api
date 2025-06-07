@@ -138,4 +138,40 @@ router.delete('/:userId/:cluster/:filename', (req, res) => {
   });
 });
 
+router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => {
+  const { userId, cluster, filename } = req.params;
+  const { newName } = req.body;
+  if (!newName) return res.status(400).json({ error: 'Missing newName' });
+
+  const dir = path.join('uploads', userId, cluster);
+  const ext = path.extname(filename);
+  const oldFile = path.join(dir, filename);
+  const newFile = path.join(dir, newName);
+
+  // Rename the file
+  fs.rename(oldFile, newFile, (err) => {
+    if (err) return res.status(500).json({ error: 'Rename failed', details: err.message });
+
+    // Rename metadata file if present
+    const oldId = path.basename(filename, ext);
+    const newId = path.basename(newName, path.extname(newName));
+    const oldMeta = path.join(dir, `${oldId}.meta.json`);
+    const newMeta = path.join(dir, `${newId}.meta.json`);
+
+    fs.rename(oldMeta, newMeta, (err2) => {
+      // Update metadata file contents
+      if (!err2 && fs.existsSync(newMeta)) {
+        try {
+          const meta = JSON.parse(fs.readFileSync(newMeta, 'utf8'));
+          meta.filename = newName;
+          meta.originalname = newName;
+          meta.url = `/media/${userId}/${cluster}/${newName}`;
+          fs.writeFileSync(newMeta, JSON.stringify(meta, null, 2));
+        } catch { /* ignore */ }
+      }
+      res.json({ status: 'renamed', old: filename, new: newName });
+    });
+  });
+});
+
 export default router;
