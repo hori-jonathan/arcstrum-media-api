@@ -8,7 +8,6 @@ const router = express.Router();
 
 router.get('/ping', (req, res) => res.send('pong'));
 
-/*
 // ---- STORAGE ----
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -137,6 +136,6 @@ router.delete('/:userId/:cluster/:filename', (req, res) => {
     fs.unlink(metaPath, () => {});
     res.json({ status: 'deleted', filename: req.params.filename, userId: req.params.userId, cluster: req.params.cluster });
   });
-});*/
+});
 
 export default router;
