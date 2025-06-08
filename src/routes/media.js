@@ -115,6 +115,40 @@ router.get('/meta/:userId/:cluster/:id', (req, res) => {
   });
 });
 
+router.post('/:userId/:cluster/:filename/move', express.json(), (req, res) => {
+  const { userId, cluster, filename } = req.params;
+  const { fromDir = '', toDir = '' } = req.body;
+
+  const srcPath = path.join('uploads', userId, cluster, fromDir, filename);
+  const destPath = path.join('uploads', userId, cluster, toDir, filename);
+
+  const srcId = path.basename(filename, path.extname(filename));
+  const metaFilename = `${srcId}.meta.json`;
+  const srcMeta = path.join('uploads', userId, cluster, fromDir, metaFilename);
+  const destMeta = path.join('uploads', userId, cluster, toDir, metaFilename);
+
+  if (!fs.existsSync(srcPath)) {
+    return res.status(404).json({ error: 'File not found at source' });
+  }
+
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+
+  fs.rename(srcPath, destPath, (err) => {
+    if (err) return res.status(500).json({ error: 'Move failed', details: err.message });
+
+    fs.rename(srcMeta, destMeta, (err2) => {
+      if (!err2 && fs.existsSync(destMeta)) {
+        try {
+          const meta = JSON.parse(fs.readFileSync(destMeta, 'utf8'));
+          meta.url = `/media/${userId}/${cluster}/${toDir}/${filename}`.replace(/\/+/g, '/');
+          fs.writeFileSync(destMeta, JSON.stringify(meta, null, 2));
+        } catch { }
+      }
+      res.json({ status: 'moved', from: fromDir, to: toDir });
+    });
+  });
+});
+
 // ---- Rename File ----
 router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => {
   const { userId, cluster, filename } = req.params;
