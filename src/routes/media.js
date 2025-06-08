@@ -12,9 +12,14 @@ router.use((req, res, next) => {
 });
 
 // ---- Dynamic Multer Upload ----
-function createDynamicUploader(userId, cluster, dir) {
+function createDynamicUploader(userId, cluster) {
   const storage = multer.diskStorage({
-    destination: (_, __, cb) => {
+    destination: (req, file, cb) => {
+      // Note: multer only populates req.body *after* parsing
+      // So we must use a workaround to get the form field value during upload
+      let dir = "";
+      // If you use `directory` on the frontend, use that here!
+      if (req.body && req.body.directory) dir = req.body.directory;
       const dest = path.join('uploads', userId, cluster, dir);
       fs.mkdirSync(dest, { recursive: true });
       cb(null, dest);
@@ -33,24 +38,36 @@ router.get('/ping', (_, res) => res.send('pong'));
 
 // ---- File Upload ----
 router.post('/:userId/:cluster/upload', (req, res) => {
-  // First, parse with multer so req.body.directory is available:
-  const uploader = multer({ dest: "uploads/tmp" }).single("file");
+  const { userId, cluster } = req.params;
+  const uploader = createDynamicUploader(userId, cluster);
+
   uploader(req, res, err => {
-    if (err || !req.file) return res.status(400).json({ error: err?.message || "Upload failed" });
+    if (err || !req.file) {
+      return res.status(400).json({ error: err?.message || "Upload failed" });
+    }
 
-    // Now req.body.directory is available:
+    // The directory from the form field
     const dir = req.body.directory || "";
-    const userId = req.params.userId;
-    const cluster = req.params.cluster;
 
+    // This is where the file was saved (already correct)
     const destDir = path.join("uploads", userId, cluster, dir);
-    fs.mkdirSync(destDir, { recursive: true });
 
-    const destPath = path.join(destDir, req.file.filename + path.extname(req.file.originalname));
-    fs.renameSync(req.file.path, destPath);
-
-    // Save metadata, respond, etc.
-    res.json({ status: "ok", filename: req.file.originalname, dir });
+    // Metadata
+    const fileId = path.basename(req.file.filename, path.extname(req.file.filename));
+    const meta = {
+      id: fileId,
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      uploadedAt: new Date().toISOString(),
+      url: `/media/${userId}/${cluster}${dir ? `/${dir}` : ""}/${req.file.filename}`.replace(/\/+/g, '/'),
+      userId,
+      cluster,
+      dir,
+    };
+    fs.writeFileSync(path.join(destDir, `${fileId}.meta.json`), JSON.stringify(meta, null, 2));
+    res.json(meta);
   });
 });
 
