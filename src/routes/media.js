@@ -12,17 +12,12 @@ router.use((req, res, next) => {
 });
 
 // ---- Dynamic Multer Upload ----
-function createDynamicUploader(userId, cluster) {
+function createTempUploader() {
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      // Note: multer only populates req.body *after* parsing
-      // So we must use a workaround to get the form field value during upload
-      let dir = "";
-      // If you use `directory` on the frontend, use that here!
-      if (req.body && req.body.directory) dir = req.body.directory;
-      const dest = path.join('uploads', userId, cluster, dir);
-      fs.mkdirSync(dest, { recursive: true });
-      cb(null, dest);
+      const tempDir = path.join('uploads', 'tmp');
+      fs.mkdirSync(tempDir, { recursive: true });
+      cb(null, tempDir);
     },
     filename: (_, file, cb) => {
       const ext = path.extname(file.originalname);
@@ -39,18 +34,20 @@ router.get('/ping', (_, res) => res.send('pong'));
 // ---- File Upload ----
 router.post('/:userId/:cluster/upload', (req, res) => {
   const { userId, cluster } = req.params;
-  const uploader = createDynamicUploader(userId, cluster);
+  const uploader = createTempUploader();
 
   uploader(req, res, err => {
     if (err || !req.file) {
       return res.status(400).json({ error: err?.message || "Upload failed" });
     }
 
-    // The directory from the form field
-    const dir = req.body.directory || "";
-
-    // This is where the file was saved (already correct)
+    const dir = req.body.directory || ""; // <-- NOW this is always set!
     const destDir = path.join("uploads", userId, cluster, dir);
+    fs.mkdirSync(destDir, { recursive: true });
+
+    // Move file from tmp to final location
+    const destPath = path.join(destDir, req.file.filename);
+    fs.renameSync(req.file.path, destPath);
 
     // Metadata
     const fileId = path.basename(req.file.filename, path.extname(req.file.filename));
