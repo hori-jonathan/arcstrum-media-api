@@ -183,6 +183,9 @@ router.post('/:userId/:cluster/create-folder', express.json(), (req, res) => {
 router.delete('/:userId/:cluster/delete-folder', express.json(), (req, res) => {
   const { path: folderPath } = req.body;
   const full = path.join('uploads', req.params.userId, req.params.cluster, folderPath);
+
+  console.log('[DELETE-FOLDER]', { folderPath, full });
+
   fs.rm(full, { recursive: true, force: true }, err => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ status: 'deleted', folder: folderPath });
