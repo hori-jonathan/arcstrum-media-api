@@ -33,31 +33,50 @@ const upload = multer({ storage });
 router.get('/ping', (req, res) => res.send('pong'));
 
 // ---- File Upload ----
-router.post('/upload', upload.single('file'), (req, res) => {
-  const { userId, cluster, dir = '' } = req.body;
-  if (!userId || !cluster || !req.file) {
-    if (req.file?.path) fs.unlinkSync(req.file.path);
-    return res.status(400).json({ error: 'Missing required fields or file' });
-  }
+router.post('/:userId/:cluster/upload', (req, res, next) => {
+  const { userId, cluster } = req.params;
+  const dir = req.body?.dir || '';
 
-  const fileId = path.basename(req.file.filename, path.extname(req.file.filename));
-  const destDir = path.join('uploads', userId, cluster, dir);
+  const dynamicStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dest = path.join('uploads', userId, cluster, dir);
+      fs.mkdirSync(dest, { recursive: true });
+      cb(null, dest);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const id = uuidv4();
+      cb(null, id + ext);
+    }
+  });
 
-  const metadata = {
-    id: fileId,
-    filename: req.file.filename,
-    originalname: req.file.originalname,
-    mimetype: req.file.mimetype,
-    size: req.file.size,
-    uploadedAt: new Date().toISOString(),
-    url: `/media/${userId}/${cluster}/${dir}/${req.file.filename}`,
-    userId,
-    cluster,
-    dir
-  };
+  const dynamicUpload = multer({ storage: dynamicStorage }).single('file');
 
-  fs.writeFileSync(path.join(destDir, `${fileId}.meta.json`), JSON.stringify(metadata, null, 2));
-  res.json(metadata);
+  dynamicUpload(req, res, err => {
+    if (err || !req.file) {
+      if (req.file?.path) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: err?.message || 'Upload failed' });
+    }
+
+    const fileId = path.basename(req.file.filename, path.extname(req.file.filename));
+    const destDir = path.join('uploads', userId, cluster, dir);
+
+    const metadata = {
+      id: fileId,
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      uploadedAt: new Date().toISOString(),
+      url: `/media/${userId}/${cluster}/${dir}/${req.file.filename}`.replace(/\/+/g, '/'),
+      userId,
+      cluster,
+      dir
+    };
+
+    fs.writeFileSync(path.join(destDir, `${fileId}.meta.json`), JSON.stringify(metadata, null, 2));
+    res.json(metadata);
+  });
 });
 
 // ---- Create Directory ----
