@@ -212,6 +212,18 @@ router.get('/:userId/:cluster/:filename', (req, res, next) => {
   res.sendFile(path.resolve(filePath));
 });
 
+// ---- Create Cluster ----
+router.post('/:userId/:cluster', (req, res) => {
+  const { userId, cluster } = req.params;
+  const clusterPath = path.join('uploads', userId, cluster);
+  try {
+    fs.mkdirSync(clusterPath, { recursive: true });
+    res.json({ status: 'created', cluster });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---- List Clusters ----
 router.get('/:userId', (req, res, next) => {
   if (req.params.userId.includes('.')) return next();
