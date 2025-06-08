@@ -182,9 +182,20 @@ router.post('/:userId/:cluster/create-folder', express.json(), (req, res) => {
 // ---- DELETE DIRECTORY ----
 router.delete('/:userId/:cluster/delete-folder', express.json(), (req, res) => {
   const { path: folderPath } = req.body;
-  const full = path.join('uploads', req.params.userId, req.params.cluster, folderPath);
+  const base = path.join('uploads', req.params.userId, req.params.cluster);
+  const full = path.join(base, folderPath || '');
 
-  console.log('[DELETE-FOLDER]', { folderPath, full });
+  console.log('[DELETE-FOLDER]', {
+    userId: req.params.userId,
+    cluster: req.params.cluster,
+    folderPath,
+    full,
+    exists: fs.existsSync(full),
+  });
+
+  if (!fs.existsSync(full)) {
+    return res.status(404).json({ error: 'File not found', full });
+  }
 
   fs.rm(full, { recursive: true, force: true }, err => {
     if (err) return res.status(500).json({ error: err.message });
@@ -196,6 +207,19 @@ router.delete('/:userId/:cluster/delete-folder', express.json(), (req, res) => {
 router.get('/:userId/:cluster/dir', (req, res) => {
   const subPath = req.query.path || '';
   const dir = path.join('uploads', req.params.userId, req.params.cluster, subPath);
+
+  console.log('[LIST-DIR]', {
+    userId: req.params.userId,
+    cluster: req.params.cluster,
+    subPath,
+    fullPath: dir,
+    exists: fs.existsSync(dir),
+  });
+
+  if (!fs.existsSync(dir)) {
+    return res.status(404).json({ error: 'File not found', path: dir });
+  }
+
   fs.readdir(dir, { withFileTypes: true }, (err, items) => {
     if (err) return res.status(500).json({ error: err.message });
     const folders = items.filter(i => i.isDirectory()).map(i => i.name);
