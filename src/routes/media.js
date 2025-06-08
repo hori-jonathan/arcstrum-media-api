@@ -132,11 +132,11 @@ router.post('/:userId/:cluster/:filename/move', express.json(), (req, res) => {
   res.json({ status: 'moved', from: fromDir, to: toDir });
 });
 
-// ---- Rename ----
+// ---- Rename File ----
 router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => {
   const { userId, cluster, filename } = req.params;
-  const dir = req.body.dir || '';
-  const newName = req.body.newName;
+  const { newName, dir = '' } = req.body;
+
   if (!newName) return res.status(400).json({ error: 'Missing newName' });
 
   const folder = path.join('uploads', userId, cluster, dir);
@@ -148,18 +148,32 @@ router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => 
   const oldMeta = path.join(folder, `${oldId}.meta.json`);
   const newMeta = path.join(folder, `${newId}.meta.json`);
 
-  fs.renameSync(oldFile, newFile);
-  fs.renameSync(oldMeta, newMeta);
-
-  if (fs.existsSync(newMeta)) {
-    try {
-      const meta = JSON.parse(fs.readFileSync(newMeta, 'utf8'));
-      meta.filename = newName;
-      meta.originalname = newName;
-      meta.url = `/media/${userId}/${cluster}/${dir}/${newName}`.replace(/\/+/g, '/');
-      fs.writeFileSync(newMeta, JSON.stringify(meta, null, 2));
-    } catch {}
+  if (!fs.existsSync(oldFile)) {
+    return res.status(404).json({ error: 'Original file not found', path: oldFile });
   }
+
+  try {
+    fs.renameSync(oldFile, newFile);
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to rename file', details: err.message });
+  }
+
+  try {
+    if (fs.existsSync(oldMeta)) {
+      fs.renameSync(oldMeta, newMeta);
+      if (fs.existsSync(newMeta)) {
+        const meta = JSON.parse(fs.readFileSync(newMeta, 'utf8'));
+        meta.filename = newName;
+        meta.originalname = newName;
+        meta.url = `/media/${userId}/${cluster}/${dir}/${newName}`.replace(/\/+/g, '/');
+        fs.writeFileSync(newMeta, JSON.stringify(meta, null, 2));
+      }
+    }
+  } catch (err) {
+    // Metadata rename should not block the response
+    console.warn(`[RENAME META] Warning: ${err.message}`);
+  }
+
   res.json({ status: 'renamed', old: filename, new: newName });
 });
 
