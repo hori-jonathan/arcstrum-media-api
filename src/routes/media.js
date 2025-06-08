@@ -2,13 +2,17 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid'; // npm i uuid
+import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 
-router.get('/ping', (req, res) => res.send('pong'));
+// Log all hits
+router.use((req, res, next) => {
+  console.log(`[MEDIA-API] ${req.method} ${req.originalUrl}`);
+  next();
+});
 
-// ---- STORAGE ----
+// ---- Storage config for multer ----
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const { userId, cluster, dir = '' } = req.body;
@@ -25,41 +29,10 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-router.get('/meta/:userId/:cluster/:id', (req, res) => {
-  const metaPath = path.join('uploads', req.params.userId, req.params.cluster, `${req.params.id}.meta.json`);
-  fs.readFile(metaPath, (err, data) => {
-    if (!err) return res.type('json').send(data);
-    // fallback: minimal metadata
-    return res.status(404).json({ error: 'Metadata not found' });
-  });
-});
+// ---- Ping ----
+router.get('/ping', (req, res) => res.send('pong'));
 
-router.get('/:userId', (req, res, next) => {
-  // If this looks like a file/cluster route, skip (Express will match the more specific route if provided)
-  if (req.params.userId.includes('.')) return next();
-  const userDir = path.join('uploads', req.params.userId);
-  fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
-    if (err) {
-      if (err.code === "ENOENT") return res.json([]);
-      return res.status(500).json({ error: err.message });
-    }
-    const clusters = entries
-      .filter(entry => entry.isDirectory())
-      .map(entry => entry.name);
-    res.json(clusters);
-  });
-});
-
-// ---- CREATE CLUSTER ----
-router.post('/:userId/:cluster', (req, res) => {
-  const dir = path.join('uploads', req.params.userId, req.params.cluster);
-  fs.mkdir(dir, { recursive: true }, err => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ status: 'created', cluster: req.params.cluster });
-  });
-});
-
-// ---- FILE UPLOAD ----
+// ---- File Upload ----
 router.post('/upload', upload.single('file'), (req, res) => {
   const { userId, cluster, dir = '' } = req.body;
   if (!userId || !cluster || !req.file) {
@@ -87,111 +60,22 @@ router.post('/upload', upload.single('file'), (req, res) => {
   res.json(metadata);
 });
 
-// ---- LIST FILES IN CLUSTER ----
-router.get('/:userId/:cluster', (req, res, next) => {
-  if (req.params.cluster.includes('.')) return next(); // In case someone requests a filename, pass
-  const dir = path.join('uploads', req.params.userId, req.params.cluster);
-  fs.readdir(dir, (err, files) => {
-    if (err) {
-      if (err.code === 'ENOENT') return res.json([]);
-      return res.status(500).json({ error: err.message });
-    }
-    const data = files.filter(f => !f.endsWith('.meta.json'));
-    res.json(data);
-  });
-});
-
-// ---- GET FILE ----
-router.get('/:userId/:cluster/:filename', (req, res, next) => {
-  // Prevent matching /download as a filename
-  if (req.params.filename === 'download') return next();
-  const filePath = path.join('uploads', req.params.userId, req.params.cluster, req.params.filename);
-  fs.access(filePath, fs.constants.F_OK, (err) => {
-    if (err) return res.status(404).json({ error: 'File not found' });
-    res.sendFile(path.resolve(filePath));
-  });
-});
-
-// ---- DOWNLOAD FILE ----
-router.get('/:userId/:cluster/:filename/download', (req, res) => {
-  const filePath = path.join('uploads', req.params.userId, req.params.cluster, req.params.filename);
-  fs.access(filePath, fs.constants.F_OK, (err) => {
-    if (err) return res.status(404).json({ error: 'File not found' });
-    res.download(path.resolve(filePath));
-  });
-});
-
-// ---- DELETE FILE ----
-router.delete('/:userId/:cluster/:filename', (req, res) => {
-  const filePath = path.join('uploads', req.params.userId, req.params.cluster, req.params.filename);
-  const id = path.basename(req.params.filename, path.extname(req.params.filename));
-  const metaPath = path.join('uploads', req.params.userId, req.params.cluster, `${id}.meta.json`);
-  fs.unlink(filePath, err => {
-    if (err) return res.status(404).json({ error: 'File not found' });
-    fs.unlink(metaPath, () => {});
-    res.json({ status: 'deleted', filename: req.params.filename, userId: req.params.userId, cluster: req.params.cluster });
-  });
-});
-
-router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => {
-  const { userId, cluster, filename } = req.params;
-  const { newName } = req.body;
-  if (!newName) return res.status(400).json({ error: 'Missing newName' });
-
-  const dir = path.join('uploads', userId, cluster);
-  const ext = path.extname(filename);
-  const oldFile = path.join(dir, filename);
-  const newFile = path.join(dir, newName);
-
-  // Rename the file
-  fs.rename(oldFile, newFile, (err) => {
-    if (err) return res.status(500).json({ error: 'Rename failed', details: err.message });
-
-    // Rename metadata file if present
-    const oldId = path.basename(filename, ext);
-    const newId = path.basename(newName, path.extname(newName));
-    const oldMeta = path.join(dir, `${oldId}.meta.json`);
-    const newMeta = path.join(dir, `${newId}.meta.json`);
-
-    fs.rename(oldMeta, newMeta, (err2) => {
-      // Update metadata file contents
-      if (!err2 && fs.existsSync(newMeta)) {
-        try {
-          const meta = JSON.parse(fs.readFileSync(newMeta, 'utf8'));
-          meta.filename = newName;
-          meta.originalname = newName;
-          meta.url = `/media/${userId}/${cluster}/${newName}`;
-          fs.writeFileSync(newMeta, JSON.stringify(meta, null, 2));
-        } catch { /* ignore */ }
-      }
-      res.json({ status: 'renamed', old: filename, new: newName });
-    });
-  });
-});
-
-// ---- CREATE DIRECTORY ----
+// ---- Create Directory ----
 router.post('/:userId/:cluster/create-folder', express.json(), (req, res) => {
   const { path: folderPath } = req.body;
-  const full = path.join('uploads', req.params.userId, req.params.cluster, folderPath);
+  const full = path.normalize(path.join('uploads', req.params.userId, req.params.cluster, folderPath));
   fs.mkdir(full, { recursive: true }, err => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ status: 'created', folder: folderPath });
   });
 });
 
-// ---- DELETE DIRECTORY ----
+// ---- Delete Directory ----
 router.delete('/:userId/:cluster/delete-folder', express.json(), (req, res) => {
   const { path: folderPath } = req.body;
-  const base = path.join('uploads', req.params.userId, req.params.cluster);
-  const full = path.join(base, folderPath || '');
+  const full = path.normalize(path.join('uploads', req.params.userId, req.params.cluster, folderPath || ''));
 
-  console.log('[DELETE-FOLDER]', {
-    userId: req.params.userId,
-    cluster: req.params.cluster,
-    folderPath,
-    full,
-    exists: fs.existsSync(full),
-  });
+  console.log('[DELETE-FOLDER]', { full, exists: fs.existsSync(full) });
 
   if (!fs.existsSync(full)) {
     return res.status(404).json({ error: 'File not found', full });
@@ -203,28 +87,122 @@ router.delete('/:userId/:cluster/delete-folder', express.json(), (req, res) => {
   });
 });
 
-// ---- LIST CONTENTS OF DIRECTORY ----
+// ---- List Directory Contents ----
 router.get('/:userId/:cluster/dir', (req, res) => {
   const subPath = req.query.path || '';
-  const dir = path.join('uploads', req.params.userId, req.params.cluster, subPath);
+  const fullPath = path.normalize(path.join('uploads', req.params.userId, req.params.cluster, subPath));
 
-  console.log('[LIST-DIR]', {
-    userId: req.params.userId,
-    cluster: req.params.cluster,
-    subPath,
-    fullPath: dir,
-    exists: fs.existsSync(dir),
-  });
+  console.log('[LIST-DIR]', { fullPath, exists: fs.existsSync(fullPath) });
 
-  if (!fs.existsSync(dir)) {
-    return res.status(404).json({ error: 'File not found', path: dir });
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).json({ error: 'File not found', path: fullPath });
   }
 
-  fs.readdir(dir, { withFileTypes: true }, (err, items) => {
+  fs.readdir(fullPath, { withFileTypes: true }, (err, items) => {
     if (err) return res.status(500).json({ error: err.message });
     const folders = items.filter(i => i.isDirectory()).map(i => i.name);
     const files = items.filter(i => i.isFile() && !i.name.endsWith('.meta.json')).map(i => i.name);
     res.json({ folders, files });
+  });
+});
+
+// ---- Metadata Fetch ----
+router.get('/meta/:userId/:cluster/:id', (req, res) => {
+  const metaPath = path.join('uploads', req.params.userId, req.params.cluster, `${req.params.id}.meta.json`);
+  fs.readFile(metaPath, (err, data) => {
+    if (!err) return res.type('json').send(data);
+    return res.status(404).json({ error: 'Metadata not found' });
+  });
+});
+
+// ---- Rename File ----
+router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => {
+  const { userId, cluster, filename } = req.params;
+  const { newName } = req.body;
+  if (!newName) return res.status(400).json({ error: 'Missing newName' });
+
+  const dir = path.join('uploads', userId, cluster);
+  const oldFile = path.join(dir, filename);
+  const newFile = path.join(dir, newName);
+  const oldId = path.basename(filename, path.extname(filename));
+  const newId = path.basename(newName, path.extname(newName));
+  const oldMeta = path.join(dir, `${oldId}.meta.json`);
+  const newMeta = path.join(dir, `${newId}.meta.json`);
+
+  fs.rename(oldFile, newFile, (err) => {
+    if (err) return res.status(500).json({ error: 'Rename failed', details: err.message });
+
+    fs.rename(oldMeta, newMeta, (err2) => {
+      if (!err2 && fs.existsSync(newMeta)) {
+        try {
+          const meta = JSON.parse(fs.readFileSync(newMeta, 'utf8'));
+          meta.filename = newName;
+          meta.originalname = newName;
+          meta.url = `/media/${userId}/${cluster}/${newName}`;
+          fs.writeFileSync(newMeta, JSON.stringify(meta, null, 2));
+        } catch { }
+      }
+      res.json({ status: 'renamed', old: filename, new: newName });
+    });
+  });
+});
+
+// ---- Delete File ----
+router.delete('/:userId/:cluster/:filename', (req, res) => {
+  const filePath = path.join('uploads', req.params.userId, req.params.cluster, req.params.filename);
+  const id = path.basename(req.params.filename, path.extname(req.params.filename));
+  const metaPath = path.join('uploads', req.params.userId, req.params.cluster, `${id}.meta.json`);
+  fs.unlink(filePath, err => {
+    if (err) return res.status(404).json({ error: 'File not found' });
+    fs.unlink(metaPath, () => {});
+    res.json({ status: 'deleted', filename: req.params.filename });
+  });
+});
+
+// ---- Download File ----
+router.get('/:userId/:cluster/:filename/download', (req, res) => {
+  const filePath = path.join('uploads', req.params.userId, req.params.cluster, req.params.filename);
+  fs.access(filePath, fs.constants.F_OK, (err) => {
+    if (err) return res.status(404).json({ error: 'File not found' });
+    res.download(path.resolve(filePath));
+  });
+});
+
+// ---- Get File ----
+router.get('/:userId/:cluster/:filename', (req, res, next) => {
+  if (req.params.filename === 'download') return next();
+  const filePath = path.join('uploads', req.params.userId, req.params.cluster, req.params.filename);
+  fs.access(filePath, fs.constants.F_OK, (err) => {
+    if (err) return res.status(404).json({ error: 'File not found' });
+    res.sendFile(path.resolve(filePath));
+  });
+});
+
+// ---- List Files in Cluster ----
+router.get('/:userId/:cluster', (req, res, next) => {
+  if (req.params.cluster.includes('.')) return next();
+  const dir = path.join('uploads', req.params.userId, req.params.cluster);
+  fs.readdir(dir, (err, files) => {
+    if (err) {
+      if (err.code === 'ENOENT') return res.json([]);
+      return res.status(500).json({ error: err.message });
+    }
+    const data = files.filter(f => !f.endsWith('.meta.json'));
+    res.json(data);
+  });
+});
+
+// ---- List Clusters for a User ----
+router.get('/:userId', (req, res, next) => {
+  if (req.params.userId.includes('.')) return next();
+  const userDir = path.join('uploads', req.params.userId);
+  fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
+    if (err) {
+      if (err.code === 'ENOENT') return res.json([]);
+      return res.status(500).json({ error: err.message });
+    }
+    const clusters = entries.filter(entry => entry.isDirectory()).map(entry => entry.name);
+    res.json(clusters);
   });
 });
 
