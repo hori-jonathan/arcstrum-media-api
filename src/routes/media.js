@@ -32,33 +32,25 @@ function createDynamicUploader(userId, cluster, dir) {
 router.get('/ping', (_, res) => res.send('pong'));
 
 // ---- File Upload ----
-router.post('/:userId/:cluster/upload', (req, res, next) => {
-  const { userId, cluster } = req.params;
-  const dir = req.body?.dir || '';
-  const uploader = createDynamicUploader(userId, cluster, dir);
-
+router.post('/:userId/:cluster/upload', (req, res) => {
+  // First, parse with multer so req.body.directory is available:
+  const uploader = multer({ dest: "uploads/tmp" }).single("file");
   uploader(req, res, err => {
-    if (err || !req.file) {
-      if (req.file?.path) fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: err?.message || 'Upload failed' });
-    }
+    if (err || !req.file) return res.status(400).json({ error: err?.message || "Upload failed" });
 
-    const fileId = path.basename(req.file.filename, path.extname(req.file.filename));
-    const destDir = path.join('uploads', userId, cluster, dir);
-    const metadata = {
-      id: fileId,
-      filename: req.file.filename,
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      uploadedAt: new Date().toISOString(),
-      url: `/media/${userId}/${cluster}/${dir}/${req.file.filename}`.replace(/\/+/g, '/'),
-      userId,
-      cluster,
-      dir
-    };
-    fs.writeFileSync(path.join(destDir, `${fileId}.meta.json`), JSON.stringify(metadata, null, 2));
-    res.json(metadata);
+    // Now req.body.directory is available:
+    const dir = req.body.directory || "";
+    const userId = req.params.userId;
+    const cluster = req.params.cluster;
+
+    const destDir = path.join("uploads", userId, cluster, dir);
+    fs.mkdirSync(destDir, { recursive: true });
+
+    const destPath = path.join(destDir, req.file.filename + path.extname(req.file.originalname));
+    fs.renameSync(req.file.path, destPath);
+
+    // Save metadata, respond, etc.
+    res.json({ status: "ok", filename: req.file.originalname, dir });
   });
 });
 
