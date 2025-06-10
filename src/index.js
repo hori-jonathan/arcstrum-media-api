@@ -1,22 +1,7 @@
 import express from 'express';
-import cors from 'cors';
 import mediaRouter from './routes/media.js';
 
 const app = express();
-
-const allowedOrigins = ['https://console.arcstrum.com', 'http://localhost:3000'];
-const corsOptions = {
-  origin: function(origin, callback) {
-    if (!origin) return callback(null, true); // Allow Postman, server-to-server, etc
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
-
-app.use(cors(corsOptions)); // MUST be before everything
 
 app.use(express.json());
 app.use('/media', mediaRouter);
