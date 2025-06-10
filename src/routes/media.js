@@ -6,6 +6,9 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 
+// === CENTRALIZED UPLOAD DIR ===
+const UPLOADS_ROOT = path.join(process.cwd(), 'serverdata', 'uploads');
+
 router.use((req, res, next) => {
   console.log(`[MEDIA-API] ${req.method} ${req.originalUrl}`);
   next();
@@ -15,7 +18,7 @@ router.use((req, res, next) => {
 function createTempUploader() {
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      const tempDir = path.join('uploads', 'tmp');
+      const tempDir = path.join(UPLOADS_ROOT, 'tmp');
       fs.mkdirSync(tempDir, { recursive: true });
       cb(null, tempDir);
     },
@@ -41,8 +44,8 @@ router.post('/:userId/:cluster/upload', (req, res) => {
       return res.status(400).json({ error: err?.message || "Upload failed" });
     }
 
-    const dir = req.body.directory || ""; // <-- NOW this is always set!
-    const destDir = path.join("uploads", userId, cluster, dir);
+    const dir = req.body.directory || "";
+    const destDir = path.join(UPLOADS_ROOT, userId, cluster, dir);
     fs.mkdirSync(destDir, { recursive: true });
 
     // Move file from tmp to final location
@@ -70,7 +73,7 @@ router.post('/:userId/:cluster/upload', (req, res) => {
 
 // ---- Create Folder ----
 router.post('/:userId/:cluster/create-folder', express.json(), (req, res) => {
-  const full = path.join('uploads', req.params.userId, req.params.cluster, req.body.path || '');
+  const full = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, req.body.path || '');
   fs.mkdir(full, { recursive: true }, err => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ status: 'created', folder: req.body.path });
@@ -79,7 +82,7 @@ router.post('/:userId/:cluster/create-folder', express.json(), (req, res) => {
 
 // ---- Delete Folder ----
 router.delete('/:userId/:cluster/delete-folder', express.json(), (req, res) => {
-  const full = path.join('uploads', req.params.userId, req.params.cluster, req.body.path || '');
+  const full = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, req.body.path || '');
   if (!fs.existsSync(full)) return res.status(404).json({ error: 'File not found', full });
   fs.rm(full, { recursive: true, force: true }, err => {
     if (err) return res.status(500).json({ error: err.message });
@@ -90,7 +93,7 @@ router.delete('/:userId/:cluster/delete-folder', express.json(), (req, res) => {
 // ---- List Dir ----
 router.get('/:userId/:cluster/dir', (req, res) => {
   const dir = req.query.path || '';
-  const fullPath = path.join('uploads', req.params.userId, req.params.cluster, dir);
+  const fullPath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, dir);
   if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found', path: fullPath });
 
   fs.readdir(fullPath, { withFileTypes: true }, (err, items) => {
@@ -104,7 +107,7 @@ router.get('/:userId/:cluster/dir', (req, res) => {
 // ---- Metadata ----
 router.get('/meta/:userId/:cluster/:id', (req, res) => {
   const dir = req.query.dir || '';
-  const metaPath = path.join('uploads', req.params.userId, req.params.cluster, dir, `${req.params.id}.meta.json`);
+  const metaPath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, dir, `${req.params.id}.meta.json`);
   fs.readFile(metaPath, (err, data) => {
     if (!err) return res.type('json').send(data);
     res.status(404).json({ error: 'Metadata not found' });
@@ -115,12 +118,12 @@ router.get('/meta/:userId/:cluster/:id', (req, res) => {
 router.post('/:userId/:cluster/:filename/move', express.json(), (req, res) => {
   const { userId, cluster, filename } = req.params;
   const { fromDir = '', toDir = '' } = req.body;
-  const srcPath = path.join('uploads', userId, cluster, fromDir, filename);
-  const destPath = path.join('uploads', userId, cluster, toDir, filename);
+  const srcPath = path.join(UPLOADS_ROOT, userId, cluster, fromDir, filename);
+  const destPath = path.join(UPLOADS_ROOT, userId, cluster, toDir, filename);
 
   const id = path.basename(filename, path.extname(filename));
-  const srcMeta = path.join('uploads', userId, cluster, fromDir, `${id}.meta.json`);
-  const destMeta = path.join('uploads', userId, cluster, toDir, `${id}.meta.json`);
+  const srcMeta = path.join(UPLOADS_ROOT, userId, cluster, fromDir, `${id}.meta.json`);
+  const destMeta = path.join(UPLOADS_ROOT, userId, cluster, toDir, `${id}.meta.json`);
 
   if (!fs.existsSync(srcPath)) return res.status(404).json({ error: 'File not found at source' });
 
@@ -145,7 +148,7 @@ router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => 
 
   if (!newName) return res.status(400).json({ error: 'Missing newName' });
 
-  const folder = path.join('uploads', userId, cluster, dir);
+  const folder = path.join(UPLOADS_ROOT, userId, cluster, dir);
   const oldFile = path.join(folder, filename);
   const newFile = path.join(folder, newName);
 
@@ -186,9 +189,9 @@ router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => 
 // ---- Delete ----
 router.delete('/:userId/:cluster/:filename', (req, res) => {
   const dir = req.query.dir || '';
-  const filePath = path.join('uploads', req.params.userId, req.params.cluster, dir, req.params.filename);
+  const filePath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, dir, req.params.filename);
   const id = path.basename(req.params.filename, path.extname(req.params.filename));
-  const metaPath = path.join('uploads', req.params.userId, req.params.cluster, dir, `${id}.meta.json`);
+  const metaPath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, dir, `${id}.meta.json`);
 
   fs.unlinkSync(filePath);
   if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath);
@@ -198,7 +201,7 @@ router.delete('/:userId/:cluster/:filename', (req, res) => {
 // ---- Download ----
 router.get('/:userId/:cluster/:filename/download', (req, res) => {
   const dir = req.query.dir || '';
-  const filePath = path.join('uploads', req.params.userId, req.params.cluster, dir, req.params.filename);
+  const filePath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, dir, req.params.filename);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
   res.download(path.resolve(filePath));
 });
@@ -207,7 +210,7 @@ router.get('/:userId/:cluster/:filename/download', (req, res) => {
 router.get('/:userId/:cluster/:filename', (req, res, next) => {
   if (req.params.filename === 'download') return next();
   const dir = req.query.dir || '';
-  const filePath = path.join('uploads', req.params.userId, req.params.cluster, dir, req.params.filename);
+  const filePath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, dir, req.params.filename);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
   res.sendFile(path.resolve(filePath));
 });
@@ -215,7 +218,7 @@ router.get('/:userId/:cluster/:filename', (req, res, next) => {
 // ---- Create Cluster ----
 router.post('/:userId/:cluster', (req, res) => {
   const { userId, cluster } = req.params;
-  const clusterPath = path.join('uploads', userId, cluster);
+  const clusterPath = path.join(UPLOADS_ROOT, userId, cluster);
   try {
     fs.mkdirSync(clusterPath, { recursive: true });
     res.json({ status: 'created', cluster });
@@ -227,7 +230,7 @@ router.post('/:userId/:cluster', (req, res) => {
 // ---- List Clusters ----
 router.get('/:userId', (req, res, next) => {
   if (req.params.userId.includes('.')) return next();
-  const userDir = path.join('uploads', req.params.userId);
+  const userDir = path.join(UPLOADS_ROOT, req.params.userId);
   fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
     if (err) {
       if (err.code === 'ENOENT') return res.json([]);

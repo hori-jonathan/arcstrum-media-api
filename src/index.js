@@ -15,4 +15,4 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = 5000;
-app.listen(PORT, () => console.log('running'));
+app.listen(PORT, () => console.log('Started media api server on 5000'));
