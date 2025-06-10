@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 const router = express.Router();
 
 // === CENTRALIZED UPLOAD DIR ===
-const UPLOADS_ROOT = path.join(process.cwd(), 'serverdata', 'uploads');
+const UPLOADS_ROOT = path.join(process.cwd(), '..', 'serverdata', 'uploads');
 
 router.use((req, res, next) => {
   console.log(`[MEDIA-API] ${req.method} ${req.originalUrl}`);
