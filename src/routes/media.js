@@ -229,7 +229,7 @@ router.post('/:userId/:cluster', (req, res) => {
 
 // ---- List Clusters ----
 router.get('/:userId', (req, res, next) => {
-  if (req.params.userId.includes('.')) return next();
+  if (!/^[a-zA-Z0-9_-]+$/.test(req.params.userId)) return next();
   const userDir = path.join(UPLOADS_ROOT, req.params.userId);
   fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
     if (err) {
