@@ -1,5 +1,22 @@
 import express from 'express';
 import mediaRouter from './routes/media.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function getPortFromFile(service, defaultPort = 5000) {
+  const filePath = path.resolve(__dirname, '../../port.txt');
+  const content = fs.readFileSync(filePath, 'utf-8');
+  for (let line of content.split('\n')) {
+    line = line.trim();
+    if (!line || line.startsWith('#')) continue;
+    const [key, value] = line.split(':').map(s => s.trim());
+    if (key === service && value) return Number(value);
+  }
+  return defaultPort;
+}
 
 const app = express();
 
@@ -14,5 +31,5 @@ app.use((err, req, res, next) => {
   next();
 });
 
-const PORT = 5000;
-app.listen(PORT, () => console.log('Started media api server on 5000'));
+const PORT = getPortFromFile('media', 5000);
+app.listen(PORT, () => console.log(`Started media api server on ${PORT}`));
