@@ -6,6 +6,19 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 
+['get', 'post', 'delete'].forEach(method => {
+  const original = router[method].bind(router);
+  router[method] = function (...args) {
+    try {
+      console.log(`[REGISTERING] ${method.toUpperCase()} ${args[0]}`);
+      return original(...args);
+    } catch (err) {
+      console.error(`[FAIL] ${method.toUpperCase()} ${args[0]} -> ${err.message}`);
+      throw err;
+    }
+  };
+});
+
 // === CENTRALIZED UPLOAD DIR ===
 const UPLOADS_ROOT = path.join(process.cwd(), '..', 'serverdata', 'media', 'uploads');
 
@@ -187,16 +200,23 @@ router.post('/:userId/:cluster/:filename/rename', express.json(), (req, res) => 
 });
 
 // ---- Delete ----
-router.delete('/:userId/:cluster/:filename', (req, res) => {
-  const dir = req.query.dir || '';
-  const filePath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, dir, req.params.filename);
-  const id = path.basename(req.params.filename, path.extname(req.params.filename));
-  const metaPath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, dir, `${id}.meta.json`);
+router.delete('/:userId/:cluster/:path(.*)', (req, res) => {
+  const { userId, cluster, path: filePathRelative } = req.params;
+  const fullPath = path.join(UPLOADS_ROOT, userId, cluster, filePathRelative);
 
-  fs.unlinkSync(filePath);
-  if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath);
-  res.json({ status: 'deleted', filename: req.params.filename });
+  const id = path.basename(filePathRelative, path.extname(filePathRelative));
+  const dir = path.dirname(filePathRelative);
+  const metaPath = path.join(UPLOADS_ROOT, userId, cluster, dir, `${id}.meta.json`);
+
+  try {
+    fs.unlinkSync(fullPath);
+    if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath);
+    res.json({ status: 'deleted', filename: filePathRelative });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete file', details: err.message });
+  }
 });
+
 
 // ---- Download ----
 router.get('/:userId/:cluster/:filename/download', (req, res) => {
@@ -229,7 +249,7 @@ router.post('/:userId/:cluster', (req, res) => {
 
 // ---- List Clusters ----
 router.get('/:userId', (req, res, next) => {
-  if (!/^[a-zA-Z0-9_-]+$/.test(req.params.userId)) return next();
+  if (req.params.userId.includes('.')) return next();
   const userDir = path.join(UPLOADS_ROOT, req.params.userId);
   fs.readdir(userDir, { withFileTypes: true }, (err, entries) => {
     if (err) {
