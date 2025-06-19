@@ -247,6 +247,13 @@ router.post('/:userId/:cluster', (req, res) => {
   }
 });
 
+router.get('/:userId/:cluster/*', (req, res) => {
+  const subpath = req.params[0]; // e.g. "Love/abc.jpg"
+  const filePath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, subpath);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  res.sendFile(path.resolve(filePath));
+});
+
 // ---- List Clusters ----
 router.get('/:userId', (req, res, next) => {
   if (req.params.userId.includes('.')) return next();
