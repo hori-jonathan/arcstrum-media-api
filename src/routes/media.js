@@ -247,10 +247,16 @@ router.post('/:userId/:cluster', (req, res) => {
   }
 });
 
-router.get('/:userId/:cluster/*', (req, res) => {
-  const subpath = req.params[0]; // e.g. "Love/abc.jpg"
-  const filePath = path.join(UPLOADS_ROOT, req.params.userId, req.params.cluster, subpath);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+// ---- Get File (Flexible Path) ----
+router.get('/:userId/:cluster/:path(.*)', (req, res) => {
+  const { userId, cluster, path: filePathRelative } = req.params;
+  const filePath = path.join(UPLOADS_ROOT, userId, cluster, filePathRelative);
+
+  // Optionally reject if filePath is not a file, or security checks here
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return res.status(404).json({ error: 'File not found', path: filePathRelative });
+  }
+
   res.sendFile(path.resolve(filePath));
 });
 
